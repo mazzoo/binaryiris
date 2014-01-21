@@ -5,3 +5,5 @@ CFLAGS+=-std=c99
 CFLAGS+=-pedantic
 LDFLAGS+=-lm
 all:binaryiris
+clean:
+	$(RM) binaryiris

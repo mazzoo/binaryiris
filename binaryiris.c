@@ -46,7 +46,7 @@ void usage_exit(char * err)
   exit(1);
 }
 
-void gather_stats(uint32_t iris[256][256], stats_t * s)
+void gather_stats(uint32_t iris[256][256][3], int color, stats_t * s)
 {
   int x;
   int y;
@@ -61,20 +61,20 @@ void gather_stats(uint32_t iris[256][256], stats_t * s)
   {
     for (x = 0; x < 256; x++)
     {
-      if (iris[x][y])
+      if (iris[x][y][color])
       {
-        s->mean += iris[x][y];
+        s->mean += iris[x][y][color];
         s->meancount++;
       }
-      if (iris[x][y] > s->max)
+      if (iris[x][y][color] > s->max)
       {
-        s->max = iris[x][y];
+        s->max = iris[x][y][color];
       }
-      if (iris[x][y] < s->min)
+      if (iris[x][y][color] < s->min)
       {
-        s->min = iris[x][y];
+        s->min = iris[x][y][color];
       }
-      if (iris[x][y] > 255)
+      if (iris[x][y][color] > 255)
       {
         s->clipcount++;
       }
@@ -142,20 +142,21 @@ int main(int argc, char ** argv)
   int x, y;
 
   /* PBM header */
-  printf("P2\n");
+  printf("P3\n");
   printf("256 256\n");
-  printf("256\n");
+  printf("255\n");
 
-  uint32_t iris[256][256];
-  memset(iris, 0, 256 * 256 * sizeof(uint32_t));
+  uint32_t iris[256][256][3];
+  memset(iris, 0, 3 * 256 * 256 * sizeof(uint32_t));
 
   /* gather */
   int    i;
-  stats_t s0;
-  stats_t s1;
-  stats_t s2;
-  stats_t s3;
+  stats_t s0[3];
+  stats_t s1[3];
+  stats_t s2[3];
+  stats_t s3[3];
 
+  /* RED = byte wise neighbours */
   for (i = 1; i < fsize; i++)
   {
     /* suppress 0x00 and 0xff sequences */
@@ -164,70 +165,124 @@ int main(int argc, char ** argv)
           ( ! ((image[i-1] == 0xff) && (image[i] == 0xff)) )
        )
     {
-      ++iris[image[i-1]][image[i]];
+      ++iris[image[i-1]][image[i]][0];
     }
   }
 
-  gather_stats(iris, &s0);
-  print_stats(&s0);
+  /* GREEN = 16bit wise neighbours */
+  for (i = 2; i < fsize; i++)
+  {
+    /* suppress 0x00 and 0xff sequences */
+    if (
+          ( ! ((image[i-2] == 0x00) && (image[i] == 0x00)) ) &&
+          ( ! ((image[i-2] == 0xff) && (image[i] == 0xff)) )
+       )
+    {
+      ++iris[image[i-2]][image[i]][1];
+    }
+  }
+
+  /* BLUE = 32bit wise neighbours */
+  for (i = 4; i < fsize; i++)
+  {
+    /* suppress 0x00 and 0xff sequences */
+    if (
+          ( ! ((image[i-4] == 0x00) && (image[i] == 0x00)) ) &&
+          ( ! ((image[i-4] == 0xff) && (image[i] == 0xff)) )
+       )
+    {
+      ++iris[image[i-4]][image[i]][2];
+    }
+  }
+
+  for (i = 0; i < 3; i++)
+  {
+    gather_stats(iris, i, &s0[i]);
+    print_stats(&s0[i]);
+  }
 
   /* eliminate a minval and shift all to black */
-  if (s0.min)
+  for (i = 0; i < 3; i++)
+  {
+    if (s0[i].min)
+    {
+      for (y = 0; y < 256; y++)
+      {
+        for (x = 0; x < 256; x++)
+        {
+          iris[x][y][i] -= s0[i].min;
+        }
+      }
+    }
+  }
+
+  for (i = 0; i < 3; i++)
+  {
+    gather_stats(iris, i, &s1[i]);
+    print_stats(&s1[i]);
+  }
+
+  /* normalize */
+  for (i = 0; i < 3; i++)
   {
     for (y = 0; y < 256; y++)
     {
       for (x = 0; x < 256; x++)
       {
-        iris[x][y] -= s0.min;
+        iris[x][y][i] *= (double) 255.0 / (double) s1[i].max;
       }
     }
   }
 
-  gather_stats(iris, &s1);
-  print_stats(&s1);
-
-  /* normalize */
-  for (y = 0; y < 256; y++)
+  for (i = 0; i < 3; i++)
   {
-    for (x = 0; x < 256; x++)
-    {
-      iris[x][y] *= (double) 255.0 / (double) s1.max;
-    }
+    gather_stats(iris, i, &s2[i]);
+    print_stats(&s2[i]);
   }
 
-  gather_stats(iris, &s2);
-  print_stats(&s2);
+#if 1
+  double hyperbol[256][3];
 
-  double hyperbol[256];
-
-  s2.mean *= 2;
-  for (i = 0; i < 256; i++)
+  for (i = 0; i < 3; i++)
   {
-    if (i < s2.mean)
+    s2[i].mean *= s2[i].meancount/(255.0*127.0);
+
+    int j;
+    for (j = 0; j < 256; j++)
     {
-      hyperbol[i] = i * 255.0 / s2.mean;
-    }else{
-      hyperbol[i] = i * s2.mean / 255.0 + 255.0 - s2.mean;
+      if (j < s2[i].mean)
+      {
+        hyperbol[j][i] = j * 255.0 / s2[i].mean;
+      }else{
+        hyperbol[j][i] = j * s2[i].mean / 255.0 + 255.0 - s2[i].mean;
+      }
+    }
+
+    for (y = 0; y < 255; y++)
+    {
+      for (x = 0; x < 255; x++)
+      {
+        iris[x][y][i] = hyperbol[iris[x][y][i]][i];
+      }
     }
   }
+#endif
 
-  for (y = 0; y < 255; y++)
+  for (i = 0; i < 3; i++)
   {
-    for (x = 0; x < 255; x++)
-    {
-      iris[x][y] = hyperbol[iris[x][y]];
-    }
+    gather_stats(iris, i, &s3[i]);
+    print_stats(&s3[i]);
   }
-
-  gather_stats(iris, &s3);
-  print_stats(&s3);
 
   /* dump */
   for (y = 0; y < 256; y++)
   {
     for (x = 0; x < 256; x++)
     {
-      printf("%d ", iris[x][y]);
+      for (i = 0; i < 3; i++)
+      {
+        printf("%d ", iris[x][y][i]);
+      }
     }
     printf("\n");
   }
