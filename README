@@ -1,0 +1,31 @@
+
+binaryiris
+~~~~~~~~~~
+
+the iris of a binary is not round, its square.
+dumps a 256x256 image that characterizes the BLOB you provided as argument
+
+
+usage
+~~~~~
+
+  usage:
+          binaryiris image
+
+          dumps a charachteristical image (as in picture) image
+          the output is created by sweeping a 256-byte sliding window over image
+
+          e.g.:
+                  $ binaryiris image > iris_of_image.pbm
+
+
+authors
+~~~~~~~
+
+mazzoo - binarytools /at/ mazzoo [dot] de
+
+
+license
+~~~~~~~
+
+GPLv3, see file LICENSE
